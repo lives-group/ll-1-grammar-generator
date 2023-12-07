@@ -2,34 +2,61 @@
 
 (require rackcheck)
 (require "glc-gen-utils.rkt")
+(provide (all-defined-out))
 
 ;(define-type  GExp (Union String NT Symb Alt Seq))
 ;(define-type  Symb (Union String NT))
 (struct Alt (l r) #:transparent)
 (struct Seq (l r) #:transparent)
 (struct NT  (String) #:transparent)
+(struct T  (String) #:transparent)
 
 (struct Production (nt rhs) #:transparent)
+(struct First+ (nt list) #:transparent)
 ;(define-type Grammar (Listof Production))
 
 ; Alt _ _ : 2
 ; Seq _ _ : 1
 ; NT _ , char, sym : 0
 
+; TODO: unificar ambos
+(define (map-T Set)
+  (map (lambda (item) (match item [(T x) (T x)] [x (T x)])) Set))
+(define (map-NT Set)
+  (map (lambda (item) (match item [(NT x) (NT x)] [x (NT x)])) Set))
+
 (define (pprint-gex ident p e)
      (match e
-         [(Seq l r) (string-append (parens (<= p 1) (pprint-gex ident 1 l))
-                                   (parens (<= p 1) (pprint-gex ident 1 r)))]
-         [(Alt l r) (string-append ident
-                                   (parens (<= p 2)  (pprint-gex ident 1 l))
+         [(Seq l r) (string-append (parens (> p 1) (pprint-gex ident 1 l))
+                                   (parens (> p 1) (pprint-gex ident 1 r)))]
+         [(Alt l r) (string-append (parens (> p 2)  (pprint-gex ident 1 l))
                                    "\n"
                                    ident
-                                   (parens (<= p 2) (pprint-gex ident 1 r)))]
-        [(? string? e) e]
+                                   "| "
+                                   (parens (> p 2) (pprint-gex ident 1 r)))]
+        [(NT s) (symbol->string s)]
+        [(T s) (symbol->string s)]
         [(? char? e)   (string e)]
         [(? symbol? e) (symbol->string e)]
    )
 )
+
+(define (pprint-grm xs)
+    (match xs
+      ['() "\n"]  
+      [(cons (Production (NT s) e) zs) (string-append (symbol->string s) " --> "
+                                                  (pprint-gex (mk-ident (+ (string-length (symbol->string s)) 3)) 0 e)
+                                                  "\n"
+                                                  (pprint-grm zs))])
+  )
+
+(define (display-grm g)
+     (display (pprint-grm g))
+  )
+
+(define (mk-ident n)
+    (build-string n (lambda (n) #\ )) 
+  )
 
 (define (parens b s)
     (cond
@@ -40,10 +67,6 @@
     (match xs
       [(cond (Production s e) zs) (string-append s "-->" (pprint-gex (mk-ident (+ (length s) 3)) p e))])
 
-  )
-
-(define (mk-ident n)
-    (build-string n (lambda (n) #\ )) 
   )
 
 (define (shalow-first seq)
@@ -79,8 +102,12 @@
 
 
 
-(define (gen:naive-ll1-ruleset V1 Σ V accRules [max-alts 5] [max-len 5])
-        (cond
+
+(define (gen:naive-ll1-ruleset raw-V1 raw-Σ raw-V accRules [max-alts 5] [max-len 5])
+  (let ([V1 (map-NT raw-V1)]
+        [Σ (map-T raw-Σ)]
+        [V (map-NT raw-V)])
+    (cond
           [(null? V1) (gen:const accRules)]
           [else       (gen:let ([rhs (gen:naive-ll1-alt Σ V max-alts max-len)])
                                (gen:naive-ll1-ruleset (cdr V1)
@@ -90,4 +117,4 @@
                                                       max-alts
                                                       max-len))]
        )
-  )
+  ))
